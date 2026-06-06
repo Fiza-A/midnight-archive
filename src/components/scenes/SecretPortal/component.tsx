@@ -18,7 +18,7 @@ import {
 } from "@/utils/backgroundMusic";
 import {
   getSecretCodeSetupHint,
-  verifySecretCodeLocally,
+  verifySecretCode,
 } from "@/utils/secretCode";
 import { SceneProps } from "@/types";
 
@@ -103,20 +103,15 @@ export function SecretPortal({ isActive, onComplete }: SceneProps) {
     }
 
     try {
-      const res = await fetch("/api/verify-code", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      const data = await res.json();
+      const { valid, notConfigured } = await verifySecretCode(code);
 
-      if (data.valid || verifySecretCodeLocally(code)) {
+      if (valid) {
         if (HAS_BACKGROUND_MUSIC) {
           await playBackgroundMusic();
         }
         setRevealing(true);
         setError("");
-      } else if (data.error === "Secret code not configured") {
+      } else if (notConfigured) {
         setError(getSecretCodeSetupHint());
       } else {
         setError(
@@ -159,7 +154,14 @@ export function SecretPortal({ isActive, onComplete }: SceneProps) {
                 autoComplete="off"
               />
               {error && (
-                <p className={portalStyles.error} role="alert">
+                <p
+                  className={
+                    error.includes("Netlify") || error.includes("Deployment")
+                      ? portalStyles.setupError
+                      : portalStyles.error
+                  }
+                  role="alert"
+                >
                   {error}
                 </p>
               )}
