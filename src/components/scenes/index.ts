@@ -1,0 +1,11 @@
+export { SecretPortal } from "./SecretPortal/component";
+export { MemoryMachine } from "./MemoryMachine/component";
+export { MemoryTunnel } from "./MemoryTunnel/component";
+export { Constellation } from "./Constellation/component";
+export { WhyYouMatter } from "./WhyYouMatter/component";
+export { WishFountain } from "./WishFountain/component";
+export { TimeCapsule } from "./TimeCapsule/component";
+export { BirthdayReveal } from "./BirthdayReveal/component";
+export { PhotoHeartFinale } from "./PhotoHeartFinale/component";
+export { FinalLetter } from "./FinalLetter/component";
+export { EndScreen } from "./EndScreen/component";
