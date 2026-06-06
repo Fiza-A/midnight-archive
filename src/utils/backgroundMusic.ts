@@ -1,20 +1,46 @@
-import { AUDIO } from "@/assets/audio";
+import { BACKGROUND_MUSIC } from "@/assets/audio";
 import { debugWarn, updateDebugState } from "@/utils/debugStore";
 
-const MUSIC_VOLUME = 0.35;
-const LOAD_TIMEOUT_MS = 8000;
+const MUSIC_VOLUME = 35;
+const PLAYER_READY_TIMEOUT_MS = 15000;
 
-const MUSIC_CANDIDATES = [
-  AUDIO.music,
-  "/assets/audio/background-music.mp3",
-  "/assets/audio/music.mp3",
-].filter((src, index, list) => src.trim() && list.indexOf(src) === index);
+interface YouTubePlayer {
+  playVideo: () => void;
+  pauseVideo: () => void;
+  stopVideo: () => void;
+  setVolume: (volume: number) => void;
+  mute: () => void;
+  unMute: () => void;
+  getPlayerState: () => number;
+  destroy: () => void;
+}
 
-type ProbeStatus = "idle" | "checking" | "found" | "missing";
+declare global {
+  interface Window {
+    onYouTubeIframeAPIReady?: () => void;
+    YT?: {
+      Player: new (
+        element: HTMLElement | string,
+        config: Record<string, unknown>
+      ) => YouTubePlayer;
+      PlayerState: {
+        UNSTARTED: number;
+        ENDED: number;
+        PLAYING: number;
+        PAUSED: number;
+        BUFFERING: number;
+        CUED: number;
+      };
+    };
+  }
+}
 
-let audio: HTMLAudioElement | null = null;
-let resolvedSrc: string | null = null;
-let probeStatus: ProbeStatus = "idle";
+let player: YouTubePlayer | null = null;
+let containerEl: HTMLElement | null = null;
+let mountHost: HTMLDivElement | null = null;
+let apiLoading: Promise<void> | null = null;
+let apiReady = false;
+let playerReady = false;
 let musicEnabled = false;
 let musicAvailable = false;
 let musicUnlocked = false;
@@ -26,7 +52,13 @@ function notifyListeners(): void {
 }
 
 export function getBackgroundMusicState() {
-  return { musicEnabled, musicAvailable, musicUnlocked, loadError, resolvedSrc };
+  return {
+    musicEnabled,
+    musicAvailable,
+    musicUnlocked,
+    loadError,
+    resolvedSrc: BACKGROUND_MUSIC.videoId,
+  };
 }
 
 export function subscribeBackgroundMusic(listener: () => void): () => void {
@@ -34,138 +66,184 @@ export function subscribeBackgroundMusic(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-async function findMusicSrc(): Promise<string | null> {
-  if (probeStatus === "found") return resolvedSrc;
-  if (probeStatus === "missing") return null;
-  if (probeStatus === "checking") {
-    await new Promise((r) => window.setTimeout(r, 50));
-    return findMusicSrc();
-  }
+function loadYouTubeApi(): Promise<void> {
+  if (apiReady) return Promise.resolve();
+  if (apiLoading) return apiLoading;
 
-  probeStatus = "checking";
-
-  for (const src of MUSIC_CANDIDATES) {
-    try {
-      const res = await fetch(src, { method: "HEAD", cache: "no-store" });
-      if (res.ok) {
-        resolvedSrc = src;
-        probeStatus = "found";
-        loadError = null;
-        return src;
-      }
-    } catch {
-      // try next candidate
-    }
-  }
-
-  resolvedSrc = null;
-  probeStatus = "missing";
-  loadError = "missing";
-  musicAvailable = false;
-  updateDebugState({ audioStatus: "missing" });
-  debugWarn(
-    "Music file not found. Add your MP3 to public/assets/audio/halka-halka-suroor.mp3"
-  );
-  notifyListeners();
-  return null;
-}
-
-function waitForAudioReady(element: HTMLAudioElement): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (element.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
-      resolve(true);
+  apiLoading = new Promise((resolve) => {
+    if (window.YT?.Player) {
+      apiReady = true;
+      resolve();
       return;
     }
 
-    let settled = false;
-    const finish = (ok: boolean) => {
-      if (settled) return;
-      settled = true;
-      window.clearTimeout(timer);
-      element.removeEventListener("canplaythrough", onReady);
-      element.removeEventListener("canplay", onReady);
-      element.removeEventListener("error", onError);
-      resolve(ok);
+    const previousReady = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      apiReady = true;
+      previousReady?.();
+      resolve();
     };
 
-    const onReady = () => finish(true);
-    const onError = () => finish(false);
-    const timer = window.setTimeout(() => {
-      finish(element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA);
-    }, LOAD_TIMEOUT_MS);
+    if (!document.getElementById("youtube-iframe-api")) {
+      const script = document.createElement("script");
+      script.id = "youtube-iframe-api";
+      script.src = "https://www.youtube.com/iframe_api";
+      document.head.appendChild(script);
+    }
+  });
 
-    element.addEventListener("canplaythrough", onReady, { once: true });
-    element.addEventListener("canplay", onReady, { once: true });
-    element.addEventListener("error", onError, { once: true });
+  return apiLoading;
+}
+
+function createPlayer(): void {
+  if (!containerEl || player || !window.YT?.Player) return;
+
+  const target = document.createElement("div");
+  target.id = "youtube-music-player";
+  containerEl.appendChild(target);
+
+  player = new window.YT.Player(target, {
+    height: "1",
+    width: "1",
+    videoId: BACKGROUND_MUSIC.videoId,
+    playerVars: {
+      autoplay: 0,
+      controls: 0,
+      disablekb: 1,
+      fs: 0,
+      iv_load_policy: 3,
+      modestbranding: 1,
+      playsinline: 1,
+      rel: 0,
+      loop: 1,
+      playlist: BACKGROUND_MUSIC.videoId,
+      origin: typeof window !== "undefined" ? window.location.origin : undefined,
+    },
+    events: {
+      onReady: (event: { target: YouTubePlayer }) => {
+        event.target.setVolume(MUSIC_VOLUME);
+        playerReady = true;
+        musicAvailable = true;
+        loadError = null;
+        updateDebugState({ audioStatus: "loaded" });
+        notifyListeners();
+      },
+      onStateChange: (event: { data: number }) => {
+        const playing = event.data === window.YT?.PlayerState.PLAYING;
+        const paused = event.data === window.YT?.PlayerState.PAUSED;
+        if (playing) {
+          musicEnabled = true;
+          musicUnlocked = true;
+          loadError = null;
+          updateDebugState({ audioStatus: "playing" });
+          notifyListeners();
+        } else if (paused) {
+          musicEnabled = false;
+          updateDebugState({ audioStatus: "paused" });
+          notifyListeners();
+        }
+      },
+      onError: () => {
+        playerReady = false;
+        musicAvailable = false;
+        loadError = "missing";
+        debugWarn("YouTube music failed to load", BACKGROUND_MUSIC.videoId);
+        updateDebugState({ audioStatus: "missing" });
+        notifyListeners();
+      },
+    },
   });
 }
 
-/** Create/load the audio element — only after a successful file probe */
+export function mountYouTubeMusicPlayer(): void {
+  if (mountHost) return;
+
+  mountHost = document.createElement("div");
+  mountHost.id = "youtube-music-host";
+  mountHost.className =
+    "pointer-events-none fixed -left-[9999px] top-0 h-px w-px overflow-hidden opacity-0";
+  mountHost.setAttribute("aria-hidden", "true");
+  document.body.appendChild(mountHost);
+  containerEl = mountHost;
+
+  if (apiReady) createPlayer();
+}
+
+export function unmountYouTubeMusicPlayer(): void {
+  if (player) {
+    try {
+      player.stopVideo();
+      player.destroy();
+    } catch {
+      // player may already be torn down
+    }
+    player = null;
+  }
+
+  mountHost?.remove();
+  mountHost = null;
+  containerEl = null;
+  playerReady = false;
+  musicEnabled = false;
+  musicAvailable = false;
+  musicUnlocked = false;
+}
+
+export function registerYouTubeMusicContainer(element: HTMLElement | null): void {
+  containerEl = element ?? mountHost;
+  if (containerEl && apiReady && !player) {
+    createPlayer();
+  }
+}
+
+function waitForPlayerReady(): Promise<boolean> {
+  if (playerReady) return Promise.resolve(true);
+
+  return new Promise((resolve) => {
+    const timeout = window.setTimeout(() => {
+      unsubscribe();
+      resolve(playerReady);
+    }, PLAYER_READY_TIMEOUT_MS);
+
+    const unsubscribe = subscribeBackgroundMusic(() => {
+      if (playerReady) {
+        window.clearTimeout(timeout);
+        unsubscribe();
+        resolve(true);
+      }
+      if (loadError === "missing") {
+        window.clearTimeout(timeout);
+        unsubscribe();
+        resolve(false);
+      }
+    });
+  });
+}
+
 export async function prepareBackgroundMusic(): Promise<boolean> {
-  if (!MUSIC_CANDIDATES.length) {
+  if (!BACKGROUND_MUSIC.videoId) {
     updateDebugState({ audioStatus: "disabled" });
     return false;
   }
 
-  if (probeStatus === "missing") return false;
+  if (loadError === "missing" && !playerReady) return false;
 
-  const src = await findMusicSrc();
-  if (!src) return false;
-
-  if (audio && !audio.error && audio.src.endsWith(src)) {
-    musicAvailable = audio.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
-    notifyListeners();
-    return musicAvailable;
-  }
-
-  const element = new Audio(src);
-  element.loop = true;
-  element.volume = MUSIC_VOLUME;
-  element.preload = "auto";
-  element.load();
-
-  const loaded = await waitForAudioReady(element);
-  if (!loaded) {
-    element.removeAttribute("src");
-    element.load();
-    probeStatus = "missing";
-    resolvedSrc = null;
-    audio = null;
-    musicAvailable = false;
-    loadError = "missing";
-    updateDebugState({ audioStatus: "missing" });
-    notifyListeners();
-    return false;
-  }
-
-  audio = element;
-  musicAvailable = true;
-  loadError = null;
-  updateDebugState({ audioStatus: "loaded" });
-  notifyListeners();
-  return true;
+  await loadYouTubeApi();
+  if (containerEl) createPlayer();
+  return waitForPlayerReady();
 }
 
 export function unlockBackgroundMusicSync(): boolean {
-  if (!audio || !musicAvailable) return false;
+  if (!player || !playerReady) return false;
 
   try {
-    const attempt = audio.play();
-    attempt
-      ?.then(() => {
-        if (!musicEnabled && audio) {
-          audio.pause();
-          audio.currentTime = 0;
-        }
-        musicUnlocked = true;
-        loadError = null;
-        notifyListeners();
-      })
-      .catch(() => {
-        loadError = "blocked";
-        updateDebugState({ audioStatus: "blocked" });
-        notifyListeners();
-      });
+    player.playVideo();
+    if (!musicEnabled) {
+      player.pauseVideo();
+    }
+    musicUnlocked = true;
+    loadError = null;
+    notifyListeners();
     return true;
   } catch {
     loadError = "blocked";
@@ -175,17 +253,17 @@ export function unlockBackgroundMusicSync(): boolean {
 }
 
 export async function playBackgroundMusic(): Promise<boolean> {
-  if (probeStatus === "missing") return false;
-
-  if (!audio) {
-    const ready = await prepareBackgroundMusic();
-    if (!ready) return false;
+  const ready = playerReady || (await prepareBackgroundMusic());
+  if (!ready || !player) {
+    if (!ready) loadError = loadError ?? "blocked";
+    notifyListeners();
+    return false;
   }
 
-  if (!audio) return false;
-
   try {
-    await audio.play();
+    player.unMute();
+    player.setVolume(MUSIC_VOLUME);
+    player.playVideo();
     musicEnabled = true;
     musicUnlocked = true;
     loadError = null;
@@ -194,6 +272,7 @@ export async function playBackgroundMusic(): Promise<boolean> {
     return true;
   } catch {
     loadError = "blocked";
+    debugWarn("YouTube playback blocked — click the speaker button");
     updateDebugState({ audioStatus: "blocked" });
     musicEnabled = false;
     notifyListeners();
@@ -202,7 +281,7 @@ export async function playBackgroundMusic(): Promise<boolean> {
 }
 
 export function stopBackgroundMusic(): void {
-  audio?.pause();
+  player?.pauseVideo();
   musicEnabled = false;
   updateDebugState({ audioStatus: "paused" });
   notifyListeners();
@@ -217,21 +296,32 @@ export async function toggleBackgroundMusic(): Promise<void> {
 }
 
 export function resetBackgroundMusic(): void {
-  if (audio) {
-    audio.pause();
-    audio.removeAttribute("src");
-    audio.load();
-    audio = null;
+  if (player) {
+    try {
+      player.stopVideo();
+      player.destroy();
+    } catch {
+      // ignore teardown errors
+    }
+    player = null;
   }
-  resolvedSrc = null;
-  probeStatus = "idle";
+
+  if (mountHost) {
+    mountHost.innerHTML = "";
+  }
+
+  playerReady = false;
   musicEnabled = false;
   musicAvailable = false;
   musicUnlocked = false;
   loadError = null;
   notifyListeners();
+
+  if (containerEl && apiReady) {
+    createPlayer();
+  }
 }
 
 export function getMusicFileHelpText(): string {
-  return "Add your MP3 here: public/assets/audio/halka-halka-suroor.mp3";
+  return `${BACKGROUND_MUSIC.title} — ${BACKGROUND_MUSIC.artists} (YouTube)`;
 }

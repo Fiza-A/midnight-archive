@@ -26,14 +26,18 @@ export function HeartCursor() {
     };
   }, [reducedMotion]);
 
-  if (reducedMotion || !visible) return null;
+  if (reducedMotion) return null;
 
   return (
     <motion.div
       className="pointer-events-none fixed z-[9999] text-highlight"
-      style={{ left: pos.x - 8, top: pos.y - 8 }}
-      animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.7, 0.4] }}
-      transition={{ duration: 1.5, repeat: Infinity }}
+      style={{
+        left: pos.x - 8,
+        top: pos.y - 8,
+        visibility: visible ? "visible" : "hidden",
+      }}
+      animate={visible ? { scale: [1, 1.2, 1], opacity: [0.4, 0.7, 0.4] } : { opacity: 0 }}
+      transition={{ duration: 1.5, repeat: visible ? Infinity : 0 }}
       aria-hidden="true"
     >
       ♥

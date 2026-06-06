@@ -11,15 +11,15 @@ interface AudioControlsProps {
 export function AudioControls({ enabled = true }: AudioControlsProps) {
   const { musicEnabled, musicAvailable, loadError, toggleMusic } = useAudioManager();
 
-  const songLabel = `${BACKGROUND_MUSIC.title} — ${BACKGROUND_MUSIC.artists}`;
+  const songLabel = getMusicFileHelpText();
 
   if (!enabled || !HAS_BACKGROUND_MUSIC) return null;
 
   const title =
     loadError === "missing"
-      ? getMusicFileHelpText()
+      ? "Could not load YouTube music — check your connection"
       : loadError === "blocked"
-        ? "Playback blocked — click again to start music"
+        ? "Click to start music"
         : musicAvailable
           ? musicEnabled
             ? `Playing: ${songLabel}`

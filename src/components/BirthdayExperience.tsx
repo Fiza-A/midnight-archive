@@ -22,6 +22,7 @@ import { PhotoHeartFinale } from "@/components/scenes/PhotoHeartFinale/component
 import { FinalLetter } from "@/components/scenes/FinalLetter/component";
 import { EndScreen } from "@/components/scenes/EndScreen/component";
 import { AudioControls } from "@/components/audio/AudioControls";
+import { YouTubeMusicPlayer } from "@/components/audio/YouTubeMusicPlayer";
 import { HAS_BACKGROUND_MUSIC } from "@/assets/audio";
 import { resetBackgroundMusic } from "@/utils/backgroundMusic";
 import { SceneId } from "@/types";
@@ -75,6 +76,7 @@ export function BirthdayExperience() {
       <BloomOverlay />
       <GlowLights />
       <HeartCursor />
+      <YouTubeMusicPlayer />
       <AudioControls />
       <DebugOverlay />
 
