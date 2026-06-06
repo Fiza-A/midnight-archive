@@ -16,6 +16,10 @@ import {
   prepareBackgroundMusic,
   unlockBackgroundMusicSync,
 } from "@/utils/backgroundMusic";
+import {
+  getSecretCodeSetupHint,
+  verifySecretCodeLocally,
+} from "@/utils/secretCode";
 import { SceneProps } from "@/types";
 
 const REVEAL_TIMEOUT_MS = 10000;
@@ -106,12 +110,14 @@ export function SecretPortal({ isActive, onComplete }: SceneProps) {
       });
       const data = await res.json();
 
-      if (data.valid) {
+      if (data.valid || verifySecretCodeLocally(code)) {
         if (HAS_BACKGROUND_MUSIC) {
           await playBackgroundMusic();
         }
         setRevealing(true);
         setError("");
+      } else if (data.error === "Secret code not configured") {
+        setError(getSecretCodeSetupHint());
       } else {
         setError(
           WRONG_CODE_MESSAGES[Math.floor(Math.random() * WRONG_CODE_MESSAGES.length)]
