@@ -1,28 +1,38 @@
 import gsap from "gsap";
 import { AnimationManager } from "@/animations/AnimationManager";
 
+const MS_PER_CHAR = 35;
+
 function typeLine(line: HTMLElement, text: string): Promise<void> {
   return new Promise((resolve) => {
     line.textContent = "";
+    if (!text) {
+      resolve();
+      return;
+    }
+
     let charIndex = 0;
-    const interval = setInterval(() => {
+    const interval = window.setInterval(() => {
       if (charIndex < text.length) {
         line.textContent += text[charIndex];
         charIndex++;
       } else {
-        clearInterval(interval);
+        window.clearInterval(interval);
         resolve();
       }
-    }, 35);
+    }, MS_PER_CHAR);
   });
+}
+
+function typingDuration(text: string): number {
+  return Math.max(0.9, (text.length * MS_PER_CHAR) / 1000 + 0.45);
 }
 
 export function createLetterSequence(
   paper: HTMLElement,
-  lines: HTMLElement[],
-  onComplete: () => void
+  lines: HTMLElement[]
 ): gsap.core.Timeline {
-  const tl = AnimationManager.createTimeline({ onComplete });
+  const tl = AnimationManager.createTimeline();
 
   tl.fromTo(
     paper,
@@ -30,15 +40,15 @@ export function createLetterSequence(
     { opacity: 1, y: 0, rotateX: 0, duration: 1.5, ease: "power3.out" }
   );
 
-  lines.forEach((line, i) => {
+  lines.forEach((line) => {
     const text = line.dataset.text ?? "";
     tl.call(() => {
-      typeLine(line, text);
+      void typeLine(line, text);
     });
-    tl.to({}, { duration: Math.max(1.5, text.length * 0.04) });
+    tl.to({}, { duration: typingDuration(text) });
   });
 
-  tl.to({}, { duration: 2 });
+  tl.to({}, { duration: 1.2 });
 
   return tl;
 }

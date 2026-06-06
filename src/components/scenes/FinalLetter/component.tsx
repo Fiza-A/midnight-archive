@@ -31,8 +31,15 @@ export function FinalLetter({ isActive, onComplete }: SceneProps) {
     started.current = true;
 
     updateDebugState({ currentScene: "final-letter", timelineState: "running" });
+
+    const paper = paperRef.current;
     const lines = lineRefs.current.filter(Boolean) as HTMLElement[];
-    const tl = createLetterSequence(paperRef.current, lines, complete);
+    const tl = createLetterSequence(paper, lines);
+
+    tl.call(() => {
+      updateDebugState({ timelineState: "letter-complete" });
+      complete();
+    });
 
     return () => {
       tl.kill();

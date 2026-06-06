@@ -85,7 +85,11 @@ export function BirthdayExperience() {
       <MemoryTunnel isActive={currentScene === "memory-tunnel"} onComplete={goTo("constellation")} />
       <Constellation isActive={currentScene === "constellation"} onComplete={goTo("why-you-matter")} />
       <WhyYouMatter isActive={currentScene === "why-you-matter"} onComplete={goTo("wish-fountain")} />
-      <WishFountain isActive={currentScene === "wish-fountain"} onComplete={goTo("time-capsule")} />
+      <WishFountain
+        isActive={currentScene === "wish-fountain"}
+        onComplete={() => {}}
+        onReplay={handleReplay}
+      />
       <TimeCapsule isActive={currentScene === "time-capsule"} onComplete={goTo("birthday-reveal")} />
       <BirthdayReveal isActive={currentScene === "birthday-reveal"} onComplete={goTo("photo-heart-finale")} />
       <PhotoHeartFinale isActive={currentScene === "photo-heart-finale"} onComplete={goTo("final-letter")} />

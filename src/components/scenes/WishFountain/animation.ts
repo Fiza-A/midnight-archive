@@ -5,9 +5,9 @@ export function createFountainSequence(
   wishes: HTMLElement[],
   particles: HTMLElement[],
   interval: number,
-  onComplete: () => void
+  finale?: gsap.core.Timeline
 ): gsap.core.Timeline {
-  const tl = AnimationManager.createTimeline({ onComplete });
+  const tl = AnimationManager.createTimeline();
 
   wishes.forEach((wish, i) => {
     const start = i * interval;
@@ -42,7 +42,10 @@ export function createFountainSequence(
     );
   });
 
-  tl.to({}, { duration: 2 });
+  if (finale) {
+    const lastWishPeak = Math.max(0, (wishes.length - 1) * interval + 2.5);
+    tl.add(finale, lastWishPeak);
+  }
 
   return tl;
 }
